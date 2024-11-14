@@ -1,2 +1,2 @@
-pub mod linear_regression;
 pub mod parse;
+pub mod ridge_regression;

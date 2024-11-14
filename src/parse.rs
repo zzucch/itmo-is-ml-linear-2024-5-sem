@@ -30,12 +30,12 @@ pub fn opposite_diagnosis(target: Diagnosis) -> Diagnosis {
     }
 }
 
-pub fn z_score_normalize(data: &[f64]) -> Vec<f64> {
-    let mean = data.iter().copied().sum::<f64>() / data.len() as f64;
-    let variance = data.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / data.len() as f64;
+pub fn z_score_normalize(entries: &[f64]) -> Vec<f64> {
+    let mean = entries.iter().copied().sum::<f64>() / entries.len() as f64;
+    let variance = entries.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / entries.len() as f64;
     let std_dev = variance.sqrt();
 
-    data.iter().map(|&x| (x - mean) / std_dev).collect()
+    entries.iter().map(|&x| (x - mean) / std_dev).collect()
 }
 
 pub fn parse(file_path: &str) -> Result<Vec<CsvEntry>, Box<dyn Error>> {
