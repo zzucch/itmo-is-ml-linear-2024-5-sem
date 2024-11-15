@@ -3,6 +3,27 @@ use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 
+pub const DIMENSIONS: usize = 30;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Sample {
+    pub features: [f64; DIMENSIONS],
+    pub label: f64, // 1 if malignant, -1 if benign
+}
+
+pub fn csv_entries_to_ridge_samples(entries: Vec<CsvEntry>) -> Vec<Sample> {
+    entries
+        .into_iter()
+        .map(|entry| Sample {
+            features: entry.values.try_into().unwrap(),
+            label: match entry.diagnosis {
+                Diagnosis::Malignant => 1.0,
+                Diagnosis::Benign => -1.0,
+            },
+        })
+        .collect()
+}
+
 #[derive(Debug)]
 pub struct CsvEntry {
     pub diagnosis: Diagnosis,

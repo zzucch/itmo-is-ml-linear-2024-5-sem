@@ -1,17 +1,8 @@
-use linear::ridge_regression::{RidgeRegression, Sample};
-
-fn csv_entries_to_ridge_samples(entries: Vec<linear::parse::CsvEntry>) -> Vec<Sample> {
-    entries
-        .into_iter()
-        .map(|entry| Sample {
-            features: entry.values.try_into().unwrap(),
-            label: match entry.diagnosis {
-                linear::parse::Diagnosis::Malignant => 1.0,
-                linear::parse::Diagnosis::Benign => -1.0,
-            },
-        })
-        .collect()
-}
+use linear::{
+    gradient_descent::{LinearClassifier, LossType},
+    parse::{csv_entries_to_ridge_samples, Sample, DIMENSIONS},
+    ridge_regression::RidgeRegression,
+};
 
 fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     #[allow(clippy::cast_possible_truncation)]
@@ -27,10 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let entries = linear::parse::parse(DATA_FILEPATH)?;
     assert!(!entries.is_empty());
-    assert_eq!(
-        entries.first().unwrap().values.len(),
-        linear::ridge_regression::DIMENSIONS
-    );
+    assert_eq!(entries.first().unwrap().values.len(), DIMENSIONS);
 
     let samples = csv_entries_to_ridge_samples(entries);
 
@@ -55,6 +43,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
     println!("ridge regression accuracy: {:.3}%", accuracy);
+
+    const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
+    const LEARNING_RATE: f64 = 0.01;
+    const EPOCHS: usize = 1000;
+
+    for loss_type in [LossType::Logistic, LossType::Exponential, LossType::Hinge] {
+        let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, loss_type);
+
+        model.fit(&train_samples, EPOCHS);
+
+        let mut correct_predictions = 0;
+        for sample in &test_samples {
+            let prediction = model.predict(&sample.features);
+            if prediction == sample.label {
+                correct_predictions += 1;
+            }
+        }
+
+        let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
+        println!("{:?} regression accuracy: {:.3}%", loss_type, accuracy);
+    }
 
     Ok(())
 }

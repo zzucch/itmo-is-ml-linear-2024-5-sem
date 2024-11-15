@@ -1,14 +1,7 @@
 use nalgebra::DMatrix;
 use ndarray::{Array1, Array2, ArrayView1};
 
-pub const DIMENSIONS: usize = 30;
-
-#[derive(Debug, Clone, Copy)]
-pub struct Sample {
-    pub features: [f64; DIMENSIONS],
-    pub label: f64, // 1 if malignant, -1 if benign
-}
-
+use crate::parse::{Sample, DIMENSIONS};
 #[derive(Default)]
 pub struct RidgeRegression {
     weights: Array1<f64>,
