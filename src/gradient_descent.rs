@@ -51,7 +51,7 @@ impl LinearClassifier {
     }
 
     fn elastic_net_regularization_gradient(&self) -> Array1<f64> {
-        let l1_term = self.weights.mapv(|weight| weight.signum());
+        let l1_term = self.weights.mapv(f64::signum);
         let l2_term = self.weights.clone();
 
         self.elastic_net_regularization * (l1_term + 2.0 * l2_term)

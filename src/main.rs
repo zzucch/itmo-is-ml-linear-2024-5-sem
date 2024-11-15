@@ -36,13 +36,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut correct_predictions = 0;
     for sample in &test_samples {
         let prediction = model.predict(&sample.features);
+
+        #[allow(clippy::float_cmp)]
         if prediction == sample.label {
             correct_predictions += 1;
         }
     }
 
     let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
-    println!("ridge regression accuracy: {:.3}%", accuracy);
+    println!("ridge regression accuracy: {accuracy:.3}%");
 
     const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
     const LEARNING_RATE: f64 = 0.01;
@@ -56,13 +58,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut correct_predictions = 0;
         for sample in &test_samples {
             let prediction = model.predict(&sample.features);
+
+            #[allow(clippy::float_cmp)]
             if prediction == sample.label {
                 correct_predictions += 1;
             }
         }
 
         let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
-        println!("{:?} regression accuracy: {:.3}%", loss_type, accuracy);
+        println!("{loss_type:?} regression accuracy: {accuracy:.3}%");
     }
 
     Ok(())

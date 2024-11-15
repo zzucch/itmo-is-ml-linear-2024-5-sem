@@ -41,18 +41,18 @@ impl RidgeRegression {
         let covariance = features_transpose.dot(&features) + regularization;
 
         let covariance =
-            DMatrix::from_vec(DIMENSIONS, DIMENSIONS, covariance.iter().cloned().collect());
-        let feature_transpose = DMatrix::from_vec(
+            DMatrix::from_vec(DIMENSIONS, DIMENSIONS, covariance.iter().copied().collect());
+        let features_transpose = DMatrix::from_vec(
             DIMENSIONS,
             samples_count,
-            features_transpose.iter().cloned().collect(),
+            features_transpose.iter().copied().collect(),
         );
         let label_vector = DMatrix::from_column_slice(samples_count, 1, labels.as_slice().unwrap());
 
         // (X^T * X + tau * I)^-1
         if let Some(covariance_inverse) = covariance.try_inverse() {
             // X^T * y
-            let features_targets_product = feature_transpose * label_vector;
+            let features_targets_product = features_transpose * label_vector;
 
             // (X^T * X + tau * I)^-1 * (X^T * y)
             let weights = covariance_inverse * features_targets_product;
