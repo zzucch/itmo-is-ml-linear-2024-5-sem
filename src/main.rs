@@ -2,7 +2,9 @@ use linear::{
     gradient_descent::{LinearClassifier, LossType},
     parse::{csv_entries_to_ridge_samples, Sample, DIMENSIONS},
     ridge_regression::RidgeRegression,
+    support_vector_machine::{KernelType, SupportVectorMachine},
 };
+use nalgebra::{DMatrix, DVector};
 
 fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     #[allow(clippy::cast_possible_truncation)]
@@ -11,6 +13,16 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     let (first, second) = samples.split_at(train_size);
 
     (first.to_vec(), second.to_vec())
+}
+
+fn convert_samples_to_matrix(samples: &[Sample]) -> DMatrix<f64> {
+    let data: Vec<f64> = samples.iter().flat_map(|s| s.features.to_vec()).collect();
+
+    DMatrix::from_vec(samples.len(), samples[0].features.len(), data)
+}
+
+fn convert_labels_to_vector(samples: &[Sample]) -> DVector<f64> {
+    DVector::from_vec(samples.iter().map(|s| s.label).collect::<Vec<f64>>())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,6 +80,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
         println!("{loss_type:?} regression accuracy: {accuracy:.3}%");
     }
+
+    let train_matrix = convert_samples_to_matrix(&train_samples);
+    let train_labels = convert_labels_to_vector(&train_samples);
+    let test_matrix = convert_samples_to_matrix(&test_samples);
+    let test_labels = convert_labels_to_vector(&test_samples);
+
+    const KERNEL: KernelType = KernelType::Linear;
+    const SVM_REGULARIZATION: f64 = 0.1;
+    const TOLERANCE: f64 = 0.001;
+    const MAX_ITERATIONS: usize = 10;
+
+    let mut svm_model = SupportVectorMachine::new(
+        KERNEL,
+        SVM_REGULARIZATION,
+        TOLERANCE,
+        MAX_ITERATIONS,
+        DIMENSIONS,
+    );
+    svm_model.fit(&train_matrix, &train_labels);
+
+    let mut correct_predictions = 0;
+    for i in 0..test_matrix.nrows() {
+        let sample = test_matrix.row(i).transpose();
+        let prediction = svm_model.predict(&sample);
+
+        #[allow(clippy::float_cmp)]
+        if prediction == test_labels[i] {
+            correct_predictions += 1;
+        }
+    }
+
+    let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
+    println!("SVM regression accuracy: {accuracy:.3}%");
 
     Ok(())
 }
