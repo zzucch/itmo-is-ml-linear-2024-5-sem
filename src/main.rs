@@ -2,7 +2,7 @@ use linear::{
     gradient_descent::{LinearClassifier, LossType},
     parse::{csv_entries_to_ridge_samples, Sample, DIMENSIONS},
     ridge_regression::RidgeRegression,
-    support_vector_machine::{KernelType, SupportVectorMachine},
+    support_vector_machine::{KernelType, SVM},
 };
 use nalgebra::{DMatrix, DVector};
 
@@ -87,12 +87,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_labels = convert_labels_to_vector(&test_samples);
 
     const KERNEL: KernelType = KernelType::Linear;
-    const SVM_REGULARIZATION: f64 = 0.1;
-    const TOLERANCE: f64 = 0.001;
-    const MAX_ITERATIONS: usize = 10;
-
-    let mut svm_model = SupportVectorMachine::new(
+    const SVM_LEARNING_RATE: f64 = 0.01;
+    const SVM_REGULARIZATION: f64 = 0.01;
+    const TOLERANCE: f64 = 0.01;
+    const MAX_ITERATIONS: usize = 100;
+    let mut svm_model = SVM::new(
         KERNEL,
+        SVM_LEARNING_RATE,
         SVM_REGULARIZATION,
         TOLERANCE,
         MAX_ITERATIONS,
