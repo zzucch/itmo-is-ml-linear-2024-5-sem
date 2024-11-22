@@ -25,10 +25,17 @@ impl LinearClassifier {
         }
     }
 
-    pub fn fit(&mut self, samples: &[Sample], number_of_epochs: usize) {
+    pub fn fit(&mut self, samples: &[Sample], number_of_epochs: usize) -> Vec<f64> {
+        let mut risks = Vec::with_capacity(number_of_epochs);
+
         for _ in 0..number_of_epochs {
             self.step(samples);
+
+            let empirical_risk = self.compute_empirical_risk(samples);
+            risks.push(empirical_risk);
         }
+
+        risks
     }
 
     pub fn predict(&self, features: &[f64; DIMENSIONS]) -> f64 {
@@ -55,6 +62,26 @@ impl LinearClassifier {
         let l2_term = self.weights.clone();
 
         self.elastic_net_regularization * (l1_term + 2.0 * l2_term)
+    }
+
+    fn compute_empirical_risk(&self, samples: &[Sample]) -> f64 {
+        let n_samples = samples.len() as f64;
+        let mut total_loss = 0.0;
+
+        for sample in samples {
+            let dot_product = ArrayView1::from(&sample.features).dot(&self.weights);
+            let margin = sample.label * dot_product;
+
+            let loss = match self.loss_type {
+                LossType::Logistic => (1.0 / (1.0 + (-margin).exp())).ln(),
+                LossType::Exponential => (-margin).exp(),
+                LossType::Hinge => (1.0 - margin).max(0.0),
+            };
+
+            total_loss += loss;
+        }
+
+        total_loss / n_samples
     }
 
     fn compute_loss_gradient(&self, samples: &[Sample]) -> Array1<f64> {
