@@ -22,6 +22,47 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     (first.to_vec(), second.to_vec())
 }
 
+fn calculate_f1_score(samples: &[Sample], predictions: &[f64]) -> f64 {
+    let mut true_positive_count = 0;
+    let mut false_positive_count = 0;
+    let mut false_negative_count = 0;
+
+    for (actual, predicted) in samples.iter().zip(predictions.iter()) {
+        if actual.label == *predicted {
+            true_positive_count += 1;
+        } else {
+            match predicted {
+                // malignant
+                1.0 => {
+                    false_positive_count += 1;
+                }
+                // benign
+                -1.0 => {
+                    false_negative_count += 1;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    let precision = if true_positive_count + false_positive_count > 0 {
+        true_positive_count as f64 / (true_positive_count + false_positive_count) as f64
+    } else {
+        0.0
+    };
+    let recall = if true_positive_count + false_negative_count > 0 {
+        true_positive_count as f64 / (true_positive_count + false_negative_count) as f64
+    } else {
+        0.0
+    };
+
+    if precision + recall > 0.0 {
+        2.0 * (precision * recall) / (precision + recall)
+    } else {
+        0.0
+    }
+}
+
 fn plot_learning_curve(
     risks: &[f64],
     title: &str,
@@ -98,8 +139,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     run_svm(&train_matrix, &train_labels, &test_matrix, &test_labels);
 
-    learning_curve_linear_classification(&train_samples, "learning_curve_linear_classification");
-    learning_curve_svm(&train_matrix, &train_labels, "learning_curve_svm");
+    run_train_learning_curve_linear_classification(
+        &train_samples,
+        "train_learning_curve_linear_classification",
+    );
+    run_train_learning_curve_svm(&train_matrix, &train_labels, "train_learning_curve_svm");
+
+    learning_curve_test_linear_classification(
+        &samples,
+        "test_learning_curve_linear_classification",
+    );
+    learning_curve_test_svm(&train_matrix, &train_labels, "test_learning_curve_svm");
 
     Ok(())
 }
@@ -179,22 +229,25 @@ fn run_svm(
     println!("SVM regression accuracy: {accuracy:.3}%");
 }
 
-fn learning_curve_linear_classification(train_samples: &[Sample], filename: &str) {
-    const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
+fn run_train_learning_curve_linear_classification(train_samples: &[Sample], filename: &str) {
     const LEARNING_RATE: f64 = 0.01;
+    const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
+    const LOSS_TYPE: LossType = LossType::Exponential;
     const EPOCHS: usize = 1000;
 
-    for loss_type in [LossType::Logistic, LossType::Exponential, LossType::Hinge] {
-        let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, loss_type);
+    let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
 
-        let risks = model.fit(&train_samples, EPOCHS);
+    let risks = model.fit(&train_samples, EPOCHS);
 
-        let name = &format!("{}_{:?}", filename, loss_type);
-        plot_learning_curve(&risks, name, &format!("{}.png", name)).unwrap();
-    }
+    let name = &format!("{}_{:?}", filename, LOSS_TYPE);
+    plot_learning_curve(&risks, name, &format!("{}.png", name)).unwrap();
 }
 
-fn learning_curve_svm(train_matrix: &DMatrix<f64>, train_labels: &DVector<f64>, filename: &str) {
+fn run_train_learning_curve_svm(
+    train_matrix: &DMatrix<f64>,
+    train_labels: &DVector<f64>,
+    filename: &str,
+) {
     const KERNEL: KernelType = KernelType::RBF { gamma: 0.5 };
     const SVM_REGULARIZATION: f64 = 0.1;
     const TOLERANCE: f64 = 0.01;
@@ -206,4 +259,42 @@ fn learning_curve_svm(train_matrix: &DMatrix<f64>, train_labels: &DVector<f64>, 
     let risks = svm_model.fit(&train_matrix, &train_labels);
 
     plot_learning_curve(&risks, "learning_curve_svm", &format!("{}.png", filename)).unwrap();
+}
+
+fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str) {
+    const LEARNING_RATE: f64 = 0.01;
+    const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
+    const LOSS_TYPE: LossType = LossType::Exponential;
+    const EPOCHS: usize = 1000;
+
+    let name = &format!("{}_{:?}", filename, LOSS_TYPE);
+    let mut test_f1s = vec![];
+
+    for ratio_percent in 1..99 {
+        let ratio = ratio_percent as f64 / 100.0;
+
+        let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
+        let (train_samples, test_samples) = split(&samples, ratio);
+
+        model.fit(&train_samples, EPOCHS);
+
+        let mut test_predictions = Vec::with_capacity(test_samples.len());
+
+        for sample in &test_samples {
+            let prediction = model.predict(&sample.features);
+            test_predictions.push(prediction);
+        }
+
+        let test_f1 = calculate_f1_score(&test_samples, &test_predictions);
+        test_f1s.push(test_f1);
+    }
+
+    plot_learning_curve(&test_f1s, name, &format!("{}.png", name)).unwrap();
+}
+
+fn learning_curve_test_svm(
+    _train_matrix: &DMatrix<f64>,
+    _train_labels: &DVector<f64>,
+    _filename: &str,
+) {
 }
