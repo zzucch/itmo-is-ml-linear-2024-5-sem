@@ -100,6 +100,8 @@ fn plot_learning_curve(
         .background_style(&WHITE.mix(0.8))
         .draw()?;
 
+    println!("plot saved to {filename}");
+
     Ok(())
 }
 
@@ -149,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &samples,
         "test_learning_curve_linear_classification",
     );
-    learning_curve_test_svm(&train_matrix, &train_labels, "test_learning_curve_svm");
+    learning_curve_test_svm(&samples, "test_learning_curve_svm");
 
     Ok(())
 }
@@ -272,10 +274,9 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
 
     for ratio_percent in 1..99 {
         let ratio = ratio_percent as f64 / 100.0;
-
-        let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
         let (train_samples, test_samples) = split(&samples, ratio);
 
+        let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
         model.fit(&train_samples, EPOCHS);
 
         let mut test_predictions = Vec::with_capacity(test_samples.len());
@@ -292,9 +293,39 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
     plot_learning_curve(&test_f1s, name, &format!("{}.png", name)).unwrap();
 }
 
-fn learning_curve_test_svm(
-    _train_matrix: &DMatrix<f64>,
-    _train_labels: &DVector<f64>,
-    _filename: &str,
-) {
+fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
+    const KERNEL: KernelType = KernelType::RBF { gamma: 0.5 };
+    const SVM_REGULARIZATION: f64 = 0.1;
+    const TOLERANCE: f64 = 0.01;
+    const MAX_ITERATIONS: usize = 2;
+
+    let mut test_f1s = vec![];
+
+    for ratio_percent in [5, 15, 20, 50, 75, 80] {
+        println!("calculating for ratio percent {ratio_percent}...");
+        let ratio = ratio_percent as f64 / 100.0;
+        let (train_samples, test_samples) = split(&samples, ratio);
+
+        let train_matrix = convert_samples_to_matrix(&train_samples);
+        let train_labels = convert_labels_to_vector(&train_samples);
+        let test_matrix = convert_samples_to_matrix(&test_samples);
+
+        let mut svm_model =
+            SupportVectorMachine::new(KERNEL, SVM_REGULARIZATION, TOLERANCE, MAX_ITERATIONS);
+        svm_model.fit(&train_matrix, &train_labels);
+
+        let mut test_predictions = vec![];
+
+        for i in 0..test_matrix.nrows() {
+            let features = test_matrix.row(i).transpose();
+
+            let prediction = svm_model.predict(&features);
+            test_predictions.push(prediction);
+        }
+
+        let test_f1 = calculate_f1_score(&test_samples, &test_predictions);
+        test_f1s.push(test_f1);
+    }
+
+    plot_learning_curve(&test_f1s, filename, &format!("{}.png", filename)).unwrap();
 }

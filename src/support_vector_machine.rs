@@ -239,14 +239,14 @@ impl SupportVectorMachine {
         risks
     }
 
-    pub fn predict(&self, sample: &DVector<f64>) -> f64 {
+    pub fn predict(&self, features: &DVector<f64>) -> f64 {
         match self.kernel_type {
             KernelType::Linear => {
                 let weights = self
                     .weights
                     .as_ref()
                     .expect("Weights not set for linear kernel");
-                let score = weights.dot(sample) + self.bias;
+                let score = weights.dot(features) + self.bias;
                 if score >= 0.0 {
                     1.0
                 } else {
@@ -271,7 +271,7 @@ impl SupportVectorMachine {
                 for i in 0..support_vectors.nrows() {
                     score += support_alphas[i]
                         * support_labels[i]
-                        * self.kernel_function(&support_vectors.row(i).transpose(), sample);
+                        * self.kernel_function(&support_vectors.row(i).transpose(), features);
                 }
                 if score >= 0.0 {
                     1.0
