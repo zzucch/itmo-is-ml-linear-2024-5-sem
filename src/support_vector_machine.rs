@@ -42,9 +42,9 @@ impl SupportVectorMachine {
     fn kernel_function(&self, first_sample: &DVector<f64>, second_sample: &DVector<f64>) -> f64 {
         match self.kernel_type {
             KernelType::Linear => first_sample.dot(second_sample),
-            KernelType::Polynomial { degree } => {
-                first_sample.dot(second_sample).powi(degree as i32)
-            }
+            KernelType::Polynomial { degree } => first_sample
+                .dot(second_sample)
+                .powi(i32::try_from(degree).unwrap()),
             KernelType::RBF { gamma } => {
                 (-gamma * (first_sample - second_sample).norm_squared()).exp()
             }
@@ -90,12 +90,14 @@ impl SupportVectorMachine {
         total_loss / samples.nrows() as f64
     }
 
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::similar_names)]
     pub fn fit(&mut self, samples: &DMatrix<f64>, labels: &DVector<f64>) -> Vec<f64> {
         let mut alphas = DVector::zeros(samples.nrows());
-        let mut iter = 0;
         let mut risks = Vec::new();
+        let mut iteration = 0;
 
-        while iter < self.max_iterations {
+        while iteration < self.max_iterations {
             let mut alpha_pairs_changed = 0;
 
             for i in 0..samples.nrows() {
@@ -108,10 +110,10 @@ impl SupportVectorMachine {
                     let j = (i + 1) % samples.nrows();
                     let error_j = self.compute_error(samples, labels, &alphas, j);
 
-                    let alpha_i_old = alphas[i];
-                    let alpha_j_old = alphas[j];
+                    let prev_alpha_i = alphas[i];
+                    let prev_alpha_j = alphas[j];
 
-                    let (l, h) = if labels[i] != labels[j] {
+                    let (l, h) = if (labels[i] - labels[j]).abs() > f64::EPSILON {
                         (
                             f64::max(0.0, alphas[j] - alphas[i]),
                             f64::min(
@@ -149,22 +151,22 @@ impl SupportVectorMachine {
                     alphas[j] -= labels[j] * (sample_error - error_j) / eta;
                     alphas[j] = alphas[j].clamp(l, h);
 
-                    if (alphas[j] - alpha_j_old).abs() < 1e-5 {
+                    if (alphas[j] - prev_alpha_j).abs() < 1e-5 {
                         continue;
                     }
 
-                    alphas[i] += labels[i] * labels[j] * (alpha_j_old - alphas[j]);
+                    alphas[i] += labels[i] * labels[j] * (prev_alpha_j - alphas[j]);
 
                     let first_bias_candidate = self.bias
                         - sample_error
                         - labels[i]
-                            * (alphas[i] - alpha_i_old)
+                            * (alphas[i] - prev_alpha_i)
                             * self.kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(i).transpose(),
                             )
                         - labels[j]
-                            * (alphas[j] - alpha_j_old)
+                            * (alphas[j] - prev_alpha_j)
                             * self.kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(j).transpose(),
@@ -172,13 +174,13 @@ impl SupportVectorMachine {
                     let second_bias_candidate = self.bias
                         - error_j
                         - labels[i]
-                            * (alphas[i] - alpha_i_old)
+                            * (alphas[i] - prev_alpha_i)
                             * self.kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(j).transpose(),
                             )
                         - labels[j]
-                            * (alphas[j] - alpha_j_old)
+                            * (alphas[j] - prev_alpha_j)
                             * self.kernel_function(
                                 &samples.row(j).transpose(),
                                 &samples.row(j).transpose(),
@@ -197,17 +199,15 @@ impl SupportVectorMachine {
             }
 
             if alpha_pairs_changed == 0 {
-                iter += 1;
+                iteration += 1;
             } else {
-                iter = 0;
+                iteration = 0;
             }
 
-            // Compute and store the risk
             let risk = self.compute_empirical_risk(samples, labels, &alphas);
             risks.push(risk);
         }
 
-        // Store support vectors and alphas
         let support_indices: Vec<usize> =
             (0..samples.nrows()).filter(|&i| alphas[i] > 1e-5).collect();
 
@@ -227,12 +227,11 @@ impl SupportVectorMachine {
         ));
 
         if let KernelType::Linear = self.kernel_type {
-            // Calculate weights explicitly for linear kernel
             self.weights = Some(DVector::zeros(samples.ncols()));
-            for i in 0..support_indices.len() {
-                let idx = support_indices[i];
+
+            for index in support_indices {
                 *self.weights.as_mut().unwrap() +=
-                    alphas[idx] * labels[idx] * samples.row(idx).transpose();
+                    alphas[index] * labels[index] * samples.row(index).transpose();
             }
         }
 
@@ -240,44 +239,36 @@ impl SupportVectorMachine {
     }
 
     pub fn predict(&self, features: &DVector<f64>) -> f64 {
-        match self.kernel_type {
-            KernelType::Linear => {
-                let weights = self
-                    .weights
-                    .as_ref()
-                    .expect("Weights not set for linear kernel");
-                let score = weights.dot(features) + self.bias;
-                if score >= 0.0 {
-                    1.0
-                } else {
-                    -1.0
-                }
-            }
-            _ => {
-                let mut score = self.bias;
-                let support_vectors = self
-                    .support_vectors
-                    .as_ref()
-                    .expect("Support vectors not set");
-                let support_labels = self
-                    .support_labels
-                    .as_ref()
-                    .expect("Support labels not set");
-                let support_alphas = self
-                    .support_alphas
-                    .as_ref()
-                    .expect("Support alphas not set");
+        if let KernelType::Linear = self.kernel_type {
+            let weights = self
+                .weights
+                .as_ref()
+                .expect("Weights not set for linear kernel");
 
-                for i in 0..support_vectors.nrows() {
-                    score += support_alphas[i]
-                        * support_labels[i]
-                        * self.kernel_function(&support_vectors.row(i).transpose(), features);
-                }
-                if score >= 0.0 {
-                    1.0
-                } else {
-                    -1.0
-                }
+            let score = weights.dot(features) + self.bias;
+
+            if score >= 0.0 {
+                1.0
+            } else {
+                -1.0
+            }
+        } else {
+            let support_vectors = self.support_vectors.as_ref().unwrap();
+            let support_labels = self.support_labels.as_ref().unwrap();
+            let support_alphas = self.support_alphas.as_ref().unwrap();
+
+            let mut score = self.bias;
+
+            for i in 0..support_vectors.nrows() {
+                score += support_alphas[i]
+                    * support_labels[i]
+                    * self.kernel_function(&support_vectors.row(i).transpose(), features);
+            }
+
+            if score >= 0.0 {
+                1.0
+            } else {
+                -1.0
             }
         }
     }

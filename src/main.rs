@@ -28,7 +28,7 @@ fn calculate_f1_score(samples: &[Sample], predictions: &[f64]) -> f64 {
     let mut false_negative_count = 0;
 
     for (actual, predicted) in samples.iter().zip(predictions.iter()) {
-        if actual.label == *predicted {
+        if (actual.label - *predicted).abs() < f64::EPSILON {
             true_positive_count += 1;
         } else {
             match predicted {
@@ -79,8 +79,9 @@ fn plot_learning_curve(
         .fold(f64::NEG_INFINITY, f64::max);
     let margin = 0.1 * (max_value - min_value);
 
-    let y_range = (min_value - margin)..(max_value + margin);
+    #[allow(clippy::range_plus_one)]
     let x_range = values[0].0..values.last().unwrap().0 + 1;
+    let y_range = (min_value - margin)..(max_value + margin);
 
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", 20))
@@ -92,13 +93,13 @@ fn plot_learning_curve(
     chart.configure_mesh().draw()?;
 
     chart
-        .draw_series(LineSeries::new(values.iter().cloned(), &RED))?
+        .draw_series(LineSeries::new(values.iter().copied(), &RED))?
         .label(label)
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], &RED));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], RED));
 
     chart
         .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
+        .background_style(WHITE.mix(0.8))
         .draw()?;
 
     println!("plot saved to {filename}");
@@ -161,7 +162,7 @@ fn run_ridge_regression(train_samples: &[Sample], test_samples: &[Sample]) {
     pub const REGULARIZATION: f64 = 10.0;
 
     let mut model = RidgeRegression::new(REGULARIZATION);
-    model.fit(&train_samples);
+    model.fit(train_samples);
 
     let mut correct_predictions = 0;
     for sample in test_samples {
@@ -185,7 +186,7 @@ fn run_linear_classification(train_samples: &[Sample], test_samples: &[Sample]) 
     for loss_type in [LossType::Logistic, LossType::Exponential, LossType::Hinge] {
         let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, loss_type);
 
-        model.fit(&train_samples, EPOCHS);
+        model.fit(train_samples, EPOCHS);
 
         let mut correct_predictions = 0;
         for sample in test_samples {
@@ -215,7 +216,7 @@ fn run_svm(
 
     let mut svm_model =
         SupportVectorMachine::new(KERNEL, SVM_REGULARIZATION, TOLERANCE, MAX_ITERATIONS);
-    svm_model.fit(&train_matrix, &train_labels);
+    svm_model.fit(train_matrix, train_labels);
 
     let mut correct_predictions = 0;
     for i in 0..test_matrix.nrows() {
@@ -240,19 +241,19 @@ fn run_train_learning_curve_linear_classification(train_samples: &[Sample], file
 
     let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
 
-    let risks = model.fit(&train_samples, EPOCHS);
+    let risks = model.fit(train_samples, EPOCHS);
 
     let risk_with_epochs: Vec<(i32, f64)> = risks
         .into_iter()
         .enumerate()
-        .map(|(epoch, risk)| (epoch as i32, risk))
+        .map(|(epoch, risk)| (i32::try_from(epoch).unwrap(), risk))
         .collect();
 
     plot_learning_curve(
         &risk_with_epochs,
         filename,
         "Empirical risk",
-        &format!("{}.png", filename),
+        &format!("{filename}.png"),
     )
     .unwrap();
 }
@@ -270,19 +271,19 @@ fn run_train_learning_curve_svm(
     let mut svm_model =
         SupportVectorMachine::new(KERNEL, SVM_REGULARIZATION, TOLERANCE, MAX_ITERATIONS);
 
-    let risks = svm_model.fit(&train_matrix, &train_labels);
+    let risks = svm_model.fit(train_matrix, train_labels);
 
     let risk_with_epochs: Vec<(i32, f64)> = risks
         .into_iter()
         .enumerate()
-        .map(|(epoch, risk)| (epoch as i32, risk))
+        .map(|(epoch, risk)| (i32::try_from(epoch).unwrap(), risk))
         .collect();
 
     plot_learning_curve(
         &risk_with_epochs,
         "learning_curve_svm",
         "Empirical risk",
-        &format!("{}.png", filename),
+        &format!("{filename}.png"),
     )
     .unwrap();
 }
@@ -299,7 +300,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
 
     for ratio_percent in ratio_percents.clone() {
         let ratio = ratio_percent as f64 / 100.0;
-        let (train_samples, test_samples) = split(&samples, ratio);
+        let (train_samples, test_samples) = split(samples, ratio);
 
         let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
         model.fit(&train_samples, EPOCHS);
@@ -318,14 +319,14 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .into_iter()
         .zip(ratio_percents)
-        .map(|(f1_score, ratio_percent)| (ratio_percent as i32, f1_score as f64))
+        .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
 
     plot_learning_curve(
         &f1_with_ratios,
         filename,
         "F1 score",
-        &format!("{}.png", filename),
+        &format!("{filename}.png"),
     )
     .unwrap();
 }
@@ -338,14 +339,12 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
     let mut test_f1s = vec![];
 
-    let ratio_percents = [
-        5, 7, 10, 12, 15, 17, 20, 22, 25, 27, 30, 32, 35, 37, 40, 42, 45, 50, 55, 60, 65, 70, 80,
-    ];
+    let ratio_percents = [10, 20, 30, 40];
 
     for ratio_percent in ratio_percents {
         println!("calculating for ratio percent {ratio_percent}...");
         let ratio = ratio_percent as f64 / 100.0;
-        let (train_samples, test_samples) = split(&samples, ratio);
+        let (train_samples, test_samples) = split(samples, ratio);
 
         let train_matrix = convert_samples_to_matrix(&train_samples);
         let train_labels = convert_labels_to_vector(&train_samples);
@@ -371,14 +370,14 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .into_iter()
         .zip(ratio_percents)
-        .map(|(f1_score, ratio_percent)| (ratio_percent as i32, f1_score as f64))
+        .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
 
     plot_learning_curve(
         &f1_with_ratios,
         filename,
         "F1 score",
-        &format!("{}.png", filename),
+        &format!("{filename}.png"),
     )
     .unwrap();
 }
