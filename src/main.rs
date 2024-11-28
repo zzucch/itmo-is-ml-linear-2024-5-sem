@@ -467,7 +467,7 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
     let mut test_f1s = vec![];
 
-    let ratio_percents = [5, 10, 15, 20, 30];
+    let ratio_percents = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90];
 
     for ratio_percent in ratio_percents {
         println!("calculating for ratio percent {ratio_percent}...");
