@@ -80,7 +80,7 @@ fn plot_learning_curve(
     label: &str,
     filename: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
+    let root = BitMapBackend::new(Path::new(filename), (800, 600)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let min_value = values.iter().map(|&(_, y)| y).fold(f64::INFINITY, f64::min);
@@ -126,12 +126,14 @@ fn plot_learning_curve_with_confidence_intervals(
     confidence_intervals: &[f64],
     ridge_regression_f1_score: f64,
 ) -> Result<(), Box<dyn Error>> {
-    let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
+    let root = BitMapBackend::new(Path::new(filename), (800, 600)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let x_range = values[0].0 as f64..values.last().unwrap().0 as f64 + 1.0;
     let y_range = 0.0..1.0;
 
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     let x_values: Vec<f64> = (x_range.start as usize..x_range.end as usize)
         .map(|x| x as f64)
         .collect();
@@ -247,7 +249,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_ridge_regression(train_samples: &[Sample], test_samples: &[Sample]) {
-    pub const REGULARIZATION: f64 = 10.0;
+    pub const REGULARIZATION: f64 = 0.0005;
 
     let mut model = RidgeRegression::new(REGULARIZATION);
     model.fit(train_samples);
@@ -287,7 +289,7 @@ fn run_linear_classification(train_samples: &[Sample], test_samples: &[Sample]) 
         }
 
         let accuracy = (correct_predictions as f64 / test_samples.len() as f64) * 100.0;
-        println!("{loss_type:?} regression accuracy: {accuracy:.3}%");
+        println!("{loss_type:?} linear classification accuracy: {accuracy:.3}%");
     }
 }
 
@@ -318,7 +320,7 @@ fn run_svm(
     }
 
     let accuracy = (correct_predictions as f64 / test_matrix.nrows() as f64) * 100.0;
-    println!("SVM regression accuracy: {accuracy:.3}%");
+    println!("SVM classification accuracy: {accuracy:.3}%");
 }
 
 fn run_train_learning_curve_linear_classification(train_samples: &[Sample], filename: &str) {
@@ -354,7 +356,7 @@ fn run_train_learning_curve_svm(
     const KERNEL: KernelType = KernelType::RBF { gamma: 0.5 };
     const SVM_REGULARIZATION: f64 = 0.1;
     const TOLERANCE: f64 = 0.01;
-    const MAX_ITERATIONS: usize = 2;
+    const MAX_ITERATIONS: usize = 10;
 
     let mut svm_model =
         SupportVectorMachine::new(KERNEL, SVM_REGULARIZATION, TOLERANCE, MAX_ITERATIONS);
@@ -440,6 +442,7 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
     for ratio_percent in ratio_percents {
         println!("calculating for ratio percent {ratio_percent}...");
+
         let ratio = ratio_percent as f64 / 100.0;
         let (train_samples, test_samples) = split(samples, ratio);
 
@@ -490,11 +493,9 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
 fn get_ridge_regression_f1_score(samples: &[Sample]) -> f64 {
     const TRAIN_RATIO: f64 = 0.6;
+    let (train_samples, test_samples) = split(samples, TRAIN_RATIO);
 
-    let (train_samples, test_samples) = split(&samples, TRAIN_RATIO);
-
-    pub const REGULARIZATION: f64 = 10.0;
-
+    pub const REGULARIZATION: f64 = 0.0005;
     let mut model = RidgeRegression::new(REGULARIZATION);
     model.fit(&train_samples);
 

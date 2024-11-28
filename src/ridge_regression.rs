@@ -1,5 +1,5 @@
 use nalgebra::DMatrix;
-use ndarray::{Array1, Array2, ArrayView1};
+use ndarray::{Array1, Array2};
 
 use crate::parse::{Sample, DIMENSIONS};
 #[derive(Default)]
@@ -16,34 +16,44 @@ impl RidgeRegression {
         }
     }
 
+    const FEATURES_WITH_BIAS_DIMENSION: usize = DIMENSIONS + 1;
+
     pub fn fit(&mut self, samples: &[Sample]) {
         let samples_count = samples.len();
 
         // X
-        let mut features = Array2::zeros((samples_count, DIMENSIONS));
+        let mut features = Array2::zeros((samples_count, Self::FEATURES_WITH_BIAS_DIMENSION));
 
         // y
         let mut labels = Array1::zeros(samples_count);
 
         for (i, sample) in samples.iter().enumerate() {
-            features
-                .row_mut(i)
-                .assign(&ArrayView1::from(&sample.features));
+            features[(i, 0)] = 1.0;
+
+            for (j, &feature) in sample.features.iter().enumerate() {
+                features[(i, j + 1)] = feature;
+            }
+
             labels[i] = sample.label;
         }
 
         let features_transpose = features.t();
 
         // (tau * I)
-        let regularization: Array2<f64> = Array2::eye(DIMENSIONS) * self.regularization;
+        let mut regularization: Array2<f64> =
+            Array2::eye(Self::FEATURES_WITH_BIAS_DIMENSION) * self.regularization;
+        regularization[(0, 0)] = 0.0;
 
         // (X^T * X + tau * I)
         let covariance = features_transpose.dot(&features) + regularization;
 
-        let covariance =
-            DMatrix::from_vec(DIMENSIONS, DIMENSIONS, covariance.iter().copied().collect());
+        let covariance = DMatrix::from_vec(
+            Self::FEATURES_WITH_BIAS_DIMENSION,
+            Self::FEATURES_WITH_BIAS_DIMENSION,
+            covariance.iter().copied().collect(),
+        );
         let features_transpose = DMatrix::from_vec(
-            DIMENSIONS,
+            Self::FEATURES_WITH_BIAS_DIMENSION,
             samples_count,
             features_transpose.iter().copied().collect(),
         );
@@ -62,7 +72,13 @@ impl RidgeRegression {
     }
 
     pub fn predict(&self, features: &[f64; DIMENSIONS]) -> f64 {
-        let prediction = ArrayView1::from(features).dot(&self.weights);
+        let mut extended_features = Array1::zeros(Self::FEATURES_WITH_BIAS_DIMENSION);
+        extended_features[0] = 1.0;
+        for (i, &feature) in features.iter().enumerate() {
+            extended_features[i + 1] = feature;
+        }
+
+        let prediction = extended_features.dot(&self.weights);
 
         if prediction > 0.0 {
             1.0

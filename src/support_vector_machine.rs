@@ -39,7 +39,11 @@ impl SupportVectorMachine {
         }
     }
 
-    fn kernel_function(&self, first_sample: &DVector<f64>, second_sample: &DVector<f64>) -> f64 {
+    fn apply_kernel_function(
+        &self,
+        first_sample: &DVector<f64>,
+        second_sample: &DVector<f64>,
+    ) -> f64 {
         match self.kernel_type {
             KernelType::Linear => first_sample.dot(second_sample),
             KernelType::Polynomial { degree } => first_sample
@@ -62,7 +66,10 @@ impl SupportVectorMachine {
         for j in 0..samples.nrows() {
             f_i += alphas[j]
                 * labels[j]
-                * self.kernel_function(&samples.row(i).transpose(), &samples.row(j).transpose());
+                * self.apply_kernel_function(
+                    &samples.row(i).transpose(),
+                    &samples.row(j).transpose(),
+                );
         }
         f_i - labels[i]
     }
@@ -74,13 +81,17 @@ impl SupportVectorMachine {
         alphas: &DVector<f64>,
     ) -> f64 {
         let mut total_loss = 0.0;
+
         for i in 0..samples.nrows() {
             let mut f_i = self.bias;
+
             for j in 0..samples.nrows() {
                 f_i += alphas[j]
                     * labels[j]
-                    * self
-                        .kernel_function(&samples.row(i).transpose(), &samples.row(j).transpose());
+                    * self.apply_kernel_function(
+                        &samples.row(i).transpose(),
+                        &samples.row(j).transpose(),
+                    );
             }
 
             let margin = labels[i] * f_i;
@@ -133,13 +144,13 @@ impl SupportVectorMachine {
                     }
 
                     let eta =
-                        2.0 * self.kernel_function(
+                        2.0 * self.apply_kernel_function(
                             &samples.row(i).transpose(),
                             &samples.row(j).transpose(),
-                        ) - self.kernel_function(
+                        ) - self.apply_kernel_function(
                             &samples.row(i).transpose(),
                             &samples.row(i).transpose(),
-                        ) - self.kernel_function(
+                        ) - self.apply_kernel_function(
                             &samples.row(j).transpose(),
                             &samples.row(j).transpose(),
                         );
@@ -161,13 +172,13 @@ impl SupportVectorMachine {
                         - sample_error
                         - labels[i]
                             * (alphas[i] - prev_alpha_i)
-                            * self.kernel_function(
+                            * self.apply_kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(i).transpose(),
                             )
                         - labels[j]
                             * (alphas[j] - prev_alpha_j)
-                            * self.kernel_function(
+                            * self.apply_kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(j).transpose(),
                             );
@@ -175,13 +186,13 @@ impl SupportVectorMachine {
                         - error_j
                         - labels[i]
                             * (alphas[i] - prev_alpha_i)
-                            * self.kernel_function(
+                            * self.apply_kernel_function(
                                 &samples.row(i).transpose(),
                                 &samples.row(j).transpose(),
                             )
                         - labels[j]
                             * (alphas[j] - prev_alpha_j)
-                            * self.kernel_function(
+                            * self.apply_kernel_function(
                                 &samples.row(j).transpose(),
                                 &samples.row(j).transpose(),
                             );
@@ -240,10 +251,7 @@ impl SupportVectorMachine {
 
     pub fn predict(&self, features: &DVector<f64>) -> f64 {
         if let KernelType::Linear = self.kernel_type {
-            let weights = self
-                .weights
-                .as_ref()
-                .expect("Weights not set for linear kernel");
+            let weights = self.weights.as_ref().unwrap();
 
             let score = weights.dot(features) + self.bias;
 
@@ -262,7 +270,7 @@ impl SupportVectorMachine {
             for i in 0..support_vectors.nrows() {
                 score += support_alphas[i]
                     * support_labels[i]
-                    * self.kernel_function(&support_vectors.row(i).transpose(), features);
+                    * self.apply_kernel_function(&support_vectors.row(i).transpose(), features);
             }
 
             if score >= 0.0 {
