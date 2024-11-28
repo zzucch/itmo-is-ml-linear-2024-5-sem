@@ -233,6 +233,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     run_svm(&train_matrix, &train_labels, &test_matrix, &test_labels);
 
+    run_asymptotically_equal(&train_samples, &train_matrix, &train_labels);
+
     run_train_learning_curve_linear_classification(
         &train_samples,
         "train_learning_curve_linear_classification",
@@ -321,6 +323,33 @@ fn run_svm(
 
     let accuracy = (correct_predictions as f64 / test_matrix.nrows() as f64) * 100.0;
     println!("SVM classification accuracy: {accuracy:.3}%");
+}
+
+fn run_asymptotically_equal(
+    train_samples: &[Sample],
+    train_matrix: &DMatrix<f64>,
+    train_labels: &DVector<f64>,
+) {
+    const LOSS_TYPE: LossType = LossType::Logistic;
+    const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
+    const LEARNING_RATE: f64 = 0.01;
+
+    const KERNEL: KernelType = KernelType::RBF { gamma: 0.5 };
+    const SVM_REGULARIZATION: f64 = 0.1;
+    const TOLERANCE: f64 = 0.01;
+
+    const COEF: usize = 3;
+    let size = train_samples.len();
+    let epoch_count = COEF * size;
+    let max_iterations = COEF;
+
+    let mut model = LinearClassifier::new(LEARNING_RATE, ELASTIC_NET_REGULARIZATION, LOSS_TYPE);
+
+    model.fit(train_samples, epoch_count);
+
+    let mut svm_model =
+        SupportVectorMachine::new(KERNEL, SVM_REGULARIZATION, TOLERANCE, max_iterations);
+    svm_model.fit(train_matrix, train_labels);
 }
 
 fn run_train_learning_curve_linear_classification(train_samples: &[Sample], filename: &str) {

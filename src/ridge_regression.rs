@@ -60,15 +60,15 @@ impl RidgeRegression {
         let label_vector = DMatrix::from_column_slice(samples_count, 1, labels.as_slice().unwrap());
 
         // (X^T * X + tau * I)^-1
-        if let Some(covariance_inverse) = covariance.try_inverse() {
-            // X^T * y
-            let features_targets_product = features_transpose * label_vector;
+        let covariance_inverse = covariance.try_inverse().unwrap();
 
-            // (X^T * X + tau * I)^-1 * (X^T * y)
-            let weights = covariance_inverse * features_targets_product;
+        // X^T * y
+        let features_targets_product = features_transpose * label_vector;
 
-            self.weights = Array1::from(weights.column(0).as_slice().to_vec());
-        }
+        // (X^T * X + tau * I)^-1 * (X^T * y)
+        let weights = covariance_inverse * features_targets_product;
+
+        self.weights = Array1::from(weights.column(0).as_slice().to_vec());
     }
 
     pub fn predict(&self, features: &[f64; DIMENSIONS]) -> f64 {
