@@ -11,7 +11,7 @@ use plotters::{
     series::LineSeries,
     style::{Color, BLUE, RED, WHITE},
 };
-use std::path::Path;
+use std::{error::Error, path::Path};
 
 fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     #[allow(clippy::cast_possible_truncation)]
@@ -22,13 +22,13 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     (first.to_vec(), second.to_vec())
 }
 
-fn get_mean_and_std(values: &[f64]) -> (f64, f64) {
+fn get_std(values: &[f64]) -> f64 {
     let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
     let variance: f64 =
         values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
     let std = variance.sqrt();
 
-    (mean, std)
+    std
 }
 
 fn calculate_f1_score(samples: &[Sample], predictions: &[f64]) -> f64 {
@@ -77,7 +77,7 @@ fn plot_learning_curve(
     title: &str,
     label: &str,
     filename: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
     let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
 
@@ -121,25 +121,13 @@ fn plot_learning_curve_with_confidence_intervals(
     title: &str,
     label: &str,
     filename: &str,
-    confidence_intervals: Vec<(f64, f64)>,
-) -> Result<(), Box<dyn std::error::Error>> {
+    confidence_intervals: Vec<f64>,
+) -> Result<(), Box<dyn Error>> {
     let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
 
-    let min_value = values
-        .iter()
-        .zip(confidence_intervals.iter())
-        .map(|(&(_, y), &(low, _))| y.min(y - low))
-        .fold(f64::INFINITY, f64::min);
-    let max_value = values
-        .iter()
-        .zip(confidence_intervals.iter())
-        .map(|(&(_, y), &(_, high))| y.max(y + high))
-        .fold(f64::NEG_INFINITY, f64::max);
-    let margin = 0.1 * (max_value - min_value);
-
     let x_range = values[0].0 as f64..values.last().unwrap().0 as f64 + 1.0;
-    let y_range = (min_value - margin)..(max_value + margin);
+    let y_range = 0.0..1.0;
 
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", 20))
@@ -152,10 +140,10 @@ fn plot_learning_curve_with_confidence_intervals(
 
     let filled_area = {
         let mut area = Vec::new();
-        for (&(x, y), &(_, high)) in values.iter().zip(confidence_intervals.iter()) {
+        for (&(x, y), &high) in values.iter().zip(confidence_intervals.iter()) {
             area.push((x as f64, y + high));
         }
-        for (&(x, y), &(low, _)) in values.iter().zip(confidence_intervals.iter()).rev() {
+        for (&(x, y), &low) in values.iter().zip(confidence_intervals.iter()).rev() {
             area.push((x as f64, y - low));
         }
         area
@@ -194,7 +182,7 @@ fn convert_labels_to_vector(samples: &[Sample]) -> DVector<f64> {
     DVector::from_vec(samples.iter().map(|s| s.label).collect::<Vec<f64>>())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     const DATA_FILEPATH: &str = "data/breast-cancer.csv";
 
     let entries = linear::parse::parse(DATA_FILEPATH)?;
@@ -373,7 +361,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
 
     let mut test_f1s = vec![];
 
-    let ratio_percents = 1..=99;
+    let ratio_percents = 1..=95;
 
     for ratio_percent in ratio_percents.clone() {
         let ratio = ratio_percent as f64 / 100.0;
@@ -393,7 +381,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
         test_f1s.push(test_f1);
     }
 
-    let (mean, std) = get_mean_and_std(&test_f1s);
+    let std = get_std(&test_f1s);
 
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .iter()
@@ -402,8 +390,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
         .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
 
-    let confidence_intervals: Vec<(f64, f64)> =
-        test_f1s.iter().map(|_| (mean - std, mean + std)).collect();
+    let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
 
     plot_learning_curve_with_confidence_intervals(
         &f1_with_ratios,
@@ -451,7 +438,7 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
         test_f1s.push(test_f1);
     }
 
-    let (mean, std) = get_mean_and_std(&test_f1s);
+    let std = get_std(&test_f1s);
 
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .iter()
@@ -460,8 +447,7 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
         .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
 
-    let confidence_intervals: Vec<(f64, f64)> =
-        test_f1s.iter().map(|_| (mean - std, mean + std)).collect();
+    let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
 
     plot_learning_curve_with_confidence_intervals(
         &f1_with_ratios,
