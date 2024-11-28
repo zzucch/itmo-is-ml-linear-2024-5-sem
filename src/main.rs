@@ -17,18 +17,20 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     let train_size = (samples.len() as f64 * train_ratio) as usize;
-    let (first, second) = samples.split_at(train_size);
 
+    let (first, second) = samples.split_at(train_size);
     (first.to_vec(), second.to_vec())
 }
 
 fn get_std(values: &[f64]) -> f64 {
     let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
-    let variance: f64 =
-        values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
-    let std = variance.sqrt();
+    let variance: f64 = values
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / values.len() as f64;
 
-    std
+    variance.sqrt()
 }
 
 fn calculate_f1_score(samples: &[Sample], predictions: &[f64]) -> f64 {
@@ -121,7 +123,7 @@ fn plot_learning_curve_with_confidence_intervals(
     title: &str,
     label: &str,
     filename: &str,
-    confidence_intervals: Vec<f64>,
+    confidence_intervals: &[f64],
 ) -> Result<(), Box<dyn Error>> {
     let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -173,13 +175,21 @@ fn plot_learning_curve_with_confidence_intervals(
 }
 
 fn convert_samples_to_matrix(samples: &[Sample]) -> DMatrix<f64> {
-    let data: Vec<f64> = samples.iter().flat_map(|s| s.features.to_vec()).collect();
+    let data: Vec<f64> = samples
+        .iter()
+        .flat_map(|sample| sample.features.to_vec())
+        .collect();
 
     DMatrix::from_vec(samples.len(), samples[0].features.len(), data)
 }
 
 fn convert_labels_to_vector(samples: &[Sample]) -> DVector<f64> {
-    DVector::from_vec(samples.iter().map(|s| s.label).collect::<Vec<f64>>())
+    DVector::from_vec(
+        samples
+            .iter()
+            .map(|sample| sample.label)
+            .collect::<Vec<f64>>(),
+    )
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -385,7 +395,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
 
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .iter()
-        .cloned()
+        .copied()
         .zip(ratio_percents)
         .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
@@ -397,7 +407,7 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
         filename,
         "F1 score",
         &format!("{filename}.png"),
-        confidence_intervals,
+        &confidence_intervals,
     )
     .unwrap();
 }
@@ -442,7 +452,7 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
     let f1_with_ratios: Vec<(i32, f64)> = test_f1s
         .iter()
-        .cloned()
+        .copied()
         .zip(ratio_percents)
         .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
         .collect();
@@ -454,7 +464,8 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
         filename,
         "F1 score",
         &format!("{filename}.png"),
-        confidence_intervals,
+        &confidence_intervals,
     )
     .unwrap();
 }
+
