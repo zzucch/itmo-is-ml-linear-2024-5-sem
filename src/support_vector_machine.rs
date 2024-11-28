@@ -51,7 +51,7 @@ impl SupportVectorMachine {
         }
     }
 
-    fn compute_error(
+    fn get_error(
         &self,
         samples: &DMatrix<f64>,
         labels: &DVector<f64>,
@@ -67,7 +67,7 @@ impl SupportVectorMachine {
         f_i - labels[i]
     }
 
-    fn compute_empirical_risk(
+    fn get_empirical_risk(
         &self,
         samples: &DMatrix<f64>,
         labels: &DVector<f64>,
@@ -101,14 +101,14 @@ impl SupportVectorMachine {
             let mut alpha_pairs_changed = 0;
 
             for i in 0..samples.nrows() {
-                let sample_error = self.compute_error(samples, labels, &alphas, i);
+                let sample_error = self.get_error(samples, labels, &alphas, i);
 
                 if (labels[i] * sample_error < -self.error_tolerance
                     && alphas[i] < self.regularization)
                     || (labels[i] * sample_error > self.error_tolerance && alphas[i] > 0.0)
                 {
                     let j = (i + 1) % samples.nrows();
-                    let error_j = self.compute_error(samples, labels, &alphas, j);
+                    let error_j = self.get_error(samples, labels, &alphas, j);
 
                     let prev_alpha_i = alphas[i];
                     let prev_alpha_j = alphas[j];
@@ -204,7 +204,7 @@ impl SupportVectorMachine {
                 iteration = 0;
             }
 
-            let risk = self.compute_empirical_risk(samples, labels, &alphas);
+            let risk = self.get_empirical_risk(samples, labels, &alphas);
             risks.push(risk);
         }
 

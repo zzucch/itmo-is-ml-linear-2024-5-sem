@@ -31,7 +31,7 @@ impl LinearClassifier {
         for _ in 0..number_of_epochs {
             self.step(samples);
 
-            let empirical_risk = self.compute_empirical_risk(samples);
+            let empirical_risk = self.get_empirical_risk(samples);
             risks.push(empirical_risk);
         }
 
@@ -50,21 +50,21 @@ impl LinearClassifier {
     }
 
     fn step(&mut self, samples: &[Sample]) {
-        let mut gradient = self.compute_loss_gradient(samples);
+        let mut gradient = self.get_loss_gradient(samples);
 
-        gradient += &self.elastic_net_regularization_gradient();
+        gradient += &self.get_elastic_net_regularization_gradient();
 
         self.weights = &self.weights - self.learning_rate * gradient;
     }
 
-    fn elastic_net_regularization_gradient(&self) -> Array1<f64> {
+    fn get_elastic_net_regularization_gradient(&self) -> Array1<f64> {
         let l1_term = self.weights.mapv(f64::signum);
         let l2_term = self.weights.clone();
 
         self.elastic_net_regularization * (l1_term + 2.0 * l2_term)
     }
 
-    fn compute_empirical_risk(&self, samples: &[Sample]) -> f64 {
+    fn get_empirical_risk(&self, samples: &[Sample]) -> f64 {
         let n_samples = samples.len() as f64;
         let mut total_loss = 0.0;
 
@@ -84,7 +84,7 @@ impl LinearClassifier {
         total_loss / n_samples
     }
 
-    fn compute_loss_gradient(&self, samples: &[Sample]) -> Array1<f64> {
+    fn get_loss_gradient(&self, samples: &[Sample]) -> Array1<f64> {
         match self.loss_type {
             LossType::Logistic => self.get_logistic_loss_gradient(samples),
             LossType::Exponential => self.get_exponential_loss_gradient(samples),

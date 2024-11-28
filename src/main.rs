@@ -9,7 +9,7 @@ use plotters::{
     chart::ChartBuilder,
     prelude::{BitMapBackend, IntoDrawingArea, PathElement},
     series::LineSeries,
-    style::{Color, BLUE, RED, WHITE},
+    style::{Color, BLUE, GREEN, RED, WHITE},
 };
 use std::{error::Error, path::Path};
 
@@ -124,12 +124,17 @@ fn plot_learning_curve_with_confidence_intervals(
     label: &str,
     filename: &str,
     confidence_intervals: &[f64],
+    ridge_regression_f1_score: f64,
 ) -> Result<(), Box<dyn Error>> {
     let root = BitMapBackend::new(Path::new(filename), (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
 
     let x_range = values[0].0 as f64..values.last().unwrap().0 as f64 + 1.0;
     let y_range = 0.0..1.0;
+
+    let x_values: Vec<f64> = (x_range.start as usize..x_range.end as usize)
+        .map(|x| x as f64)
+        .collect();
 
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", 20))
@@ -155,6 +160,14 @@ fn plot_learning_curve_with_confidence_intervals(
         filled_area,
         BLUE.mix(0.2).filled(),
     )))?;
+
+    chart
+        .draw_series(LineSeries::new(
+            x_values.iter().map(|&x| (x, ridge_regression_f1_score)),
+            GREEN,
+        ))?
+        .label("Ridge Regression F1 Score")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], GREEN));
 
     chart
         .draw_series(LineSeries::new(
@@ -402,12 +415,15 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
 
     let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
 
+    let rigde_f1_score = get_ridge_regression_f1_score(samples);
+
     plot_learning_curve_with_confidence_intervals(
         &f1_with_ratios,
         filename,
         "F1 score",
         &format!("{filename}.png"),
         &confidence_intervals,
+        rigde_f1_score,
     )
     .unwrap();
 }
@@ -459,13 +475,35 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
 
     let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
 
+    let rigde_f1_score = get_ridge_regression_f1_score(samples);
+
     plot_learning_curve_with_confidence_intervals(
         &f1_with_ratios,
         filename,
         "F1 score",
         &format!("{filename}.png"),
         &confidence_intervals,
+        rigde_f1_score,
     )
     .unwrap();
 }
 
+fn get_ridge_regression_f1_score(samples: &[Sample]) -> f64 {
+    const TRAIN_RATIO: f64 = 0.6;
+
+    let (train_samples, test_samples) = split(&samples, TRAIN_RATIO);
+
+    pub const REGULARIZATION: f64 = 10.0;
+
+    let mut model = RidgeRegression::new(REGULARIZATION);
+    model.fit(&train_samples);
+
+    let mut test_predictions = Vec::with_capacity(test_samples.len());
+
+    for sample in &test_samples {
+        let prediction = model.predict(&sample.features);
+        test_predictions.push(prediction);
+    }
+
+    calculate_f1_score(&test_samples, &test_predictions)
+}
