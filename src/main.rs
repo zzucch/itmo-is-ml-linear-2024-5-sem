@@ -1,15 +1,16 @@
 use linear::{
     gradient_descent::{LinearClassifier, LossType},
-    parse::{csv_entries_to_ridge_samples, Sample, DIMENSIONS},
+    parse::{csv_entries_to_samples, Sample, DIMENSIONS},
     ridge_regression::RidgeRegression,
     support_vector_machine::{KernelType, SupportVectorMachine},
 };
 use nalgebra::{DMatrix, DVector};
 use plotters::{
-    chart::ChartBuilder,
-    prelude::{BitMapBackend, IntoDrawingArea, PathElement},
+    chart::{ChartBuilder, ChartContext},
+    coord::types::RangedCoordf64,
+    prelude::{BitMapBackend, Cartesian2d, IntoDrawingArea, PathElement},
     series::LineSeries,
-    style::{Color, BLUE, GREEN, RED, WHITE},
+    style::{full_palette::GREEN_700, Color, RGBColor, BLACK, BLUE, RED, WHITE},
 };
 use std::{error::Error, path::Path};
 
@@ -19,6 +20,7 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     let train_size = (samples.len() as f64 * train_ratio) as usize;
 
     let (first, second) = samples.split_at(train_size);
+
     (first.to_vec(), second.to_vec())
 }
 
@@ -118,25 +120,22 @@ fn plot_learning_curve(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn plot_learning_curve_with_confidence_intervals(
-    values: &[(i32, f64)],
     title: &str,
-    label: &str,
     filename: &str,
-    confidence_intervals: &[f64],
-    ridge_regression_f1_score: f64,
+    values_lc: &[(i32, f64)],
+    values_svm: &[(i32, f64)],
+    values_ridge: &[(i32, f64)],
+    confidence_intervals_lc: &[f64],
+    confidence_intervals_svm: &[f64],
+    confidence_intervals_ridge: &[f64],
 ) -> Result<(), Box<dyn Error>> {
     let root = BitMapBackend::new(Path::new(filename), (800, 600)).into_drawing_area();
     root.fill(&WHITE)?;
 
-    let x_range = values[0].0 as f64..values.last().unwrap().0 as f64 + 1.0;
+    let x_range = values_lc[0].0 as f64..values_lc.last().unwrap().0 as f64 + 1.0;
     let y_range = 0.0..1.0;
-
-    #[allow(clippy::cast_sign_loss)]
-    #[allow(clippy::cast_possible_truncation)]
-    let x_values: Vec<f64> = (x_range.start as usize..x_range.end as usize)
-        .map(|x| x as f64)
-        .collect();
 
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", 20))
@@ -147,44 +146,72 @@ fn plot_learning_curve_with_confidence_intervals(
 
     chart.configure_mesh().draw()?;
 
-    let filled_area = {
-        let mut area = Vec::new();
-        for (&(x, y), &high) in values.iter().zip(confidence_intervals.iter()) {
-            area.push((x as f64, y + high));
-        }
-        for (&(x, y), &low) in values.iter().zip(confidence_intervals.iter()).rev() {
-            area.push((x as f64, y - low));
-        }
-        area
+    let plot_values_with_intervals = |chart: &mut ChartContext<
+        '_,
+        BitMapBackend<'_>,
+        Cartesian2d<RangedCoordf64, RangedCoordf64>,
+    >,
+                                      values: &[(i32, f64)],
+                                      confidence_intervals: &[f64],
+                                      color: RGBColor,
+                                      label: &str|
+     -> Result<(), Box<dyn Error>> {
+        let filled_area = {
+            let mut area = Vec::new();
+            for (&(x, y), &high) in values.iter().zip(confidence_intervals.iter()) {
+                area.push((x as f64, y + high));
+            }
+            for (&(x, y), &low) in values.iter().zip(confidence_intervals.iter()).rev() {
+                area.push((x as f64, y - low));
+            }
+            area
+        };
+
+        chart.draw_series(std::iter::once(plotters::prelude::Polygon::new(
+            filled_area,
+            color.mix(0.2).filled(),
+        )))?;
+
+        chart
+            .draw_series(LineSeries::new(
+                values.iter().map(|&(x, y)| (x as f64, y)),
+                color.stroke_width(2),
+            ))?
+            .label(label)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], color));
+
+        Ok(())
     };
 
-    chart.draw_series(std::iter::once(plotters::prelude::Polygon::new(
-        filled_area,
-        BLUE.mix(0.2).filled(),
-    )))?;
-
-    chart
-        .draw_series(LineSeries::new(
-            x_values.iter().map(|&x| (x, ridge_regression_f1_score)),
-            GREEN,
-        ))?
-        .label("Ridge Regression F1 Score")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], GREEN));
-
-    chart
-        .draw_series(LineSeries::new(
-            values.iter().map(|&(x, y)| (x as f64, y)),
-            &RED,
-        ))?
-        .label(label)
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], RED));
+    plot_values_with_intervals(
+        &mut chart,
+        values_ridge,
+        confidence_intervals_ridge,
+        GREEN_700,
+        "Ridge regression F1 score",
+    )?;
+    plot_values_with_intervals(
+        &mut chart,
+        values_lc,
+        confidence_intervals_lc,
+        RED,
+        "Linear classifier F1 score",
+    )?;
+    plot_values_with_intervals(
+        &mut chart,
+        values_svm,
+        confidence_intervals_svm,
+        BLUE,
+        "SVM F1 score",
+    )?;
 
     chart
         .configure_series_labels()
         .background_style(WHITE.mix(0.8))
+        .border_style(BLACK)
         .draw()?;
 
-    println!("plot saved to {filename}");
+    println!("Plot saved to {filename}");
 
     Ok(())
 }
@@ -214,13 +241,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert!(!entries.is_empty());
     assert_eq!(entries.first().unwrap().values.len(), DIMENSIONS);
 
-    let samples = csv_entries_to_ridge_samples(entries);
+    let samples = csv_entries_to_samples(entries);
 
     const TRAIN_RATIO: f64 = 0.6;
-    const VALIDATION_RATIO: f64 = 0.6; // of samples that are not train
 
     let (train_samples, test_samples) = split(&samples, TRAIN_RATIO);
-    let (test_samples, _validation_samples) = split(&test_samples, VALIDATION_RATIO);
 
     run_ridge_regression(&train_samples, &test_samples);
 
@@ -241,11 +266,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     run_train_learning_curve_svm(&train_matrix, &train_labels, "train_learning_curve_svm");
 
-    learning_curve_test_linear_classification(
+    learning_curve_test_linear_classification_and_svm(
         &samples,
         "test_learning_curve_linear_classification",
     );
-    learning_curve_test_svm(&samples, "test_learning_curve_svm");
 
     Ok(())
 }
@@ -407,17 +431,18 @@ fn run_train_learning_curve_svm(
     .unwrap();
 }
 
-fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str) {
+#[allow(clippy::similar_names)]
+fn learning_curve_test_linear_classification_and_svm(samples: &[Sample], filename: &str) {
     const LEARNING_RATE: f64 = 0.01;
     const ELASTIC_NET_REGULARIZATION: f64 = 0.01;
     const LOSS_TYPE: LossType = LossType::Exponential;
     const EPOCHS: usize = 1000;
+    let ratio_percents_lc = 1..=95;
 
-    let mut test_f1s = vec![];
+    let mut test_f1s_lc = vec![];
+    let mut samples_len_lc = Vec::new();
 
-    let ratio_percents = 1..=95;
-
-    for ratio_percent in ratio_percents.clone() {
+    for ratio_percent in ratio_percents_lc.clone() {
         let ratio = ratio_percent as f64 / 100.0;
         let (train_samples, test_samples) = split(samples, ratio);
 
@@ -431,46 +456,23 @@ fn learning_curve_test_linear_classification(samples: &[Sample], filename: &str)
             test_predictions.push(prediction);
         }
 
-        let test_f1 = calculate_f1_score(&test_samples, &test_predictions);
-        test_f1s.push(test_f1);
+        let test_f1_lc = calculate_f1_score(&test_samples, &test_predictions);
+        test_f1s_lc.push(test_f1_lc);
+        samples_len_lc.push(train_samples.len());
     }
 
-    let std = get_std(&test_f1s);
-
-    let f1_with_ratios: Vec<(i32, f64)> = test_f1s
-        .iter()
-        .copied()
-        .zip(ratio_percents)
-        .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
-        .collect();
-
-    let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
-
-    let rigde_f1_score = get_ridge_regression_f1_score(samples);
-
-    plot_learning_curve_with_confidence_intervals(
-        &f1_with_ratios,
-        filename,
-        "F1 score",
-        &format!("{filename}.png"),
-        &confidence_intervals,
-        rigde_f1_score,
-    )
-    .unwrap();
-}
-
-fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
     const KERNEL: KernelType = KernelType::RBF { gamma: 0.5 };
     const SVM_REGULARIZATION: f64 = 0.1;
     const TOLERANCE: f64 = 0.01;
     const MAX_ITERATIONS: usize = 2;
 
-    let mut test_f1s = vec![];
+    let ratio_percents_svm = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90];
 
-    let ratio_percents = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90];
+    let mut test_f1s_svm = vec![];
+    let mut samples_len_svm = Vec::new();
 
-    for ratio_percent in ratio_percents {
-        println!("calculating for ratio percent {ratio_percent}...");
+    for ratio_percent in ratio_percents_svm {
+        println!("calculating svm score for ratio percent {ratio_percent}...");
 
         let ratio = ratio_percent as f64 / 100.0;
         let (train_samples, test_samples) = split(samples, ratio);
@@ -492,48 +494,87 @@ fn learning_curve_test_svm(samples: &[Sample], filename: &str) {
             test_predictions.push(prediction);
         }
 
-        let test_f1 = calculate_f1_score(&test_samples, &test_predictions);
-        test_f1s.push(test_f1);
+        let test_f1_svm = calculate_f1_score(&test_samples, &test_predictions);
+        test_f1s_svm.push(test_f1_svm);
+        samples_len_svm.push(train_samples.len());
     }
 
-    let std = get_std(&test_f1s);
+    let (f1_scores_ridge, std_ridge) = get_ridge_regression_f1_scores(samples);
 
-    let f1_with_ratios: Vec<(i32, f64)> = test_f1s
+    let std_lc = get_std(&test_f1s_lc);
+    let f1_scores_lc: Vec<(i32, f64)> = test_f1s_lc
         .iter()
         .copied()
-        .zip(ratio_percents)
-        .map(|(f1_score, ratio_percent)| (ratio_percent, f1_score))
+        .zip(samples_len_lc)
+        .map(|(f1_score, len)| (i32::try_from(len).unwrap(), f1_score))
         .collect();
+    let confidence_intervals_lc: Vec<f64> = test_f1s_lc.iter().map(|_| std_lc).collect();
 
-    let confidence_intervals: Vec<f64> = test_f1s.iter().map(|_| std).collect();
+    let std_svm = get_std(&test_f1s_svm);
+    let f1_scores_svm: Vec<(i32, f64)> = test_f1s_svm
+        .iter()
+        .copied()
+        .zip(samples_len_svm)
+        .map(|(f1_score, len)| (i32::try_from(len).unwrap(), f1_score))
+        .collect();
+    let confidence_intervals_svm: Vec<f64> = test_f1s_svm.iter().map(|_| std_svm).collect();
 
-    let rigde_f1_score = get_ridge_regression_f1_score(samples);
+    let confidence_intervals_ridge: Vec<f64> =
+        f1_scores_ridge.iter().map(|(_, _)| std_ridge).collect();
 
     plot_learning_curve_with_confidence_intervals(
-        &f1_with_ratios,
         filename,
-        "F1 score",
         &format!("{filename}.png"),
-        &confidence_intervals,
-        rigde_f1_score,
+        &f1_scores_lc,
+        &f1_scores_svm,
+        &f1_scores_ridge,
+        &confidence_intervals_lc,
+        &confidence_intervals_svm,
+        &confidence_intervals_ridge,
     )
     .unwrap();
 }
 
-fn get_ridge_regression_f1_score(samples: &[Sample]) -> f64 {
-    const TRAIN_RATIO: f64 = 0.6;
-    let (train_samples, test_samples) = split(samples, TRAIN_RATIO);
+fn get_ridge_regression_f1_scores(samples: &[Sample]) -> (Vec<(i32, f64)>, f64) {
+    pub const REGULARIZATION: f64 = 0.5;
+    let ratio_percents_lc = 1..=95;
 
-    pub const REGULARIZATION: f64 = 0.0005;
-    let mut model = RidgeRegression::new(REGULARIZATION);
-    model.fit(&train_samples);
+    let mut f1_scores = Vec::new();
+    let mut max_f1_score = -1.0;
 
-    let mut test_predictions = Vec::with_capacity(test_samples.len());
+    for ratio_percent in ratio_percents_lc.clone() {
+        let ratio = ratio_percent as f64 / 100.0;
+        let (train_samples, test_samples) = split(samples, ratio);
 
-    for sample in &test_samples {
-        let prediction = model.predict(&sample.features);
-        test_predictions.push(prediction);
+        let mut model = RidgeRegression::new(REGULARIZATION);
+        model.fit(&train_samples);
+
+        let mut test_predictions = Vec::with_capacity(test_samples.len());
+
+        for sample in &test_samples {
+            let prediction = model.predict(&sample.features);
+            test_predictions.push(prediction);
+        }
+
+        let f1_score = calculate_f1_score(&test_samples, &test_predictions);
+        f1_scores.push((i32::try_from(train_samples.len()).unwrap(), f1_score));
+
+        if f1_score > max_f1_score {
+            max_f1_score = f1_score;
+        }
     }
 
-    calculate_f1_score(&test_samples, &test_predictions)
+    let std_ridge = get_std(
+        &f1_scores
+            .iter()
+            .map(|(_, score)| *score)
+            .collect::<Vec<f64>>(),
+    );
+
+    f1_scores = f1_scores
+        .iter()
+        .map(|&(samples_len, _)| (samples_len, max_f1_score))
+        .collect();
+
+    (f1_scores, std_ridge)
 }

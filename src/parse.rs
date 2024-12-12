@@ -11,7 +11,7 @@ pub struct Sample {
     pub label: f64, // 1 if malignant, -1 if benign
 }
 
-pub fn csv_entries_to_ridge_samples(entries: Vec<CsvEntry>) -> Vec<Sample> {
+pub fn csv_entries_to_samples(entries: Vec<CsvEntry>) -> Vec<Sample> {
     entries
         .into_iter()
         .map(|entry| Sample {
